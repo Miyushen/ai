@@ -1,5 +1,7 @@
 # InsightAgent
 
+[![CI](https://github.com/Miyushen/ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Miyushen/ai/actions/workflows/ci.yml)
+
 InsightAgent is an autonomous business data analysis agent built with LangGraph. It turns a business question into a plan, generates and validates read-only SQL, executes it against PostgreSQL, analyzes the evidence, asks an independent reviewer to check the conclusion, and produces an inspectable report.
 
 ![InsightAgent demo](docs/screenshots/insight-agent-demo.png)
