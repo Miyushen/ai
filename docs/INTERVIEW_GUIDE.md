@@ -16,6 +16,8 @@ InsightAgent 是一个基于 LangGraph 的自主数据分析智能体。用户�
 
 ## 五分钟演示流程
 
+界面参考：[分析报告](screenshots/insight-agent-demo.png) · [执行轨迹](screenshots/insight-agent-trace.png) · [手机布局](screenshots/insight-agent-mobile.png)
+
 1. 打开 `http://localhost:8501`，先展示 API、数据库、密钥和模型状态。
 2. 输入：`过去30天哪个地区的销售额下降最明显？请与之前30天比较。`
 3. 运行后先看四个指标：SQL 尝试次数、证据行数、Reviewer 状态和置信度。
