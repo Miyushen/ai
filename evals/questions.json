@@ -1,0 +1,28 @@
+[
+  {
+    "id": "regional_decline",
+    "question": "过去30天哪个地区的销售额下降最明显？请与之前30天比较。",
+    "expected_terms": ["North", "下降"]
+  },
+  {
+    "id": "electronics_refunds",
+    "question": "最近45天电子产品退款率是否异常？请与其他品类比较。",
+    "expected_terms": ["Electronics", "退款"]
+  },
+  {
+    "id": "paid_search_efficiency",
+    "question": "Paid Search 最近30天广告投入是否带来了匹配的访问和销售增长？",
+    "expected_terms": ["Paid Search", "广告"]
+  },
+  {
+    "id": "channel_revenue",
+    "question": "按渠道比较最近90天收入，并指出贡献最高和最低的渠道。",
+    "expected_terms": ["渠道", "收入"]
+  },
+  {
+    "id": "refund_reasons",
+    "question": "退款最常见的三个原因是什么，各自涉及多少退款金额？",
+    "expected_terms": ["退款", "原因"]
+  }
+]
+

@@ -1,0 +1,2 @@
+"""InsightAgent application package."""
+
