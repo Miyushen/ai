@@ -168,7 +168,14 @@ st.markdown(
     }
     .ia-trace-row.retry::before { background: var(--amber); }
     .ia-trace-row.failed::before { background: var(--red); }
-    .ia-trace-node { color: var(--ink); font-size: 0.82rem; font-weight: 720; }
+    .ia-trace-node {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+        color: var(--ink); font-size: 0.82rem; font-weight: 720;
+    }
+    .ia-trace-duration {
+        color: #777c82; background: #eceeef; border-radius: 4px;
+        padding: 0.12rem 0.32rem; font-family: monospace; font-size: 0.68rem; font-weight: 650;
+    }
     .ia-trace-detail { color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
 
     .ia-review-banner {
@@ -237,7 +244,13 @@ def render_chart(rows: list[dict[str, Any]], spec: dict[str, Any] | None) -> Non
     st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
 
 
-def render_trace(trace: list[dict[str, str]]) -> None:
+def format_duration(duration_ms: float) -> str:
+    if duration_ms < 1000:
+        return f"{duration_ms:.0f} ms"
+    return f"{duration_ms / 1000:.1f} s"
+
+
+def render_trace(trace: list[dict[str, Any]]) -> None:
     if not trace:
         st.info("本次运行没有执行轨迹。")
         return
@@ -246,9 +259,11 @@ def render_trace(trace: list[dict[str, str]]) -> None:
         status = event.get("status", "ok")
         css_status = status if status in {"retry", "failed"} else "ok"
         node = NODE_LABELS.get(event.get("node", ""), event.get("node", "未知节点"))
+        duration = format_duration(float(event.get("duration_ms", 0) or 0))
         rows.append(
             f'<div class="ia-trace-row {css_status}">'
-            f'<div class="ia-trace-node">{html.escape(node)}</div>'
+            f'<div class="ia-trace-node"><span>{html.escape(node)}</span>'
+            f'<span class="ia-trace-duration">{duration}</span></div>'
             f'<div class="ia-trace-detail">{html.escape(event.get("detail", ""))}</div></div>'
         )
     st.markdown(f'<div class="ia-timeline">{"".join(rows)}</div>', unsafe_allow_html=True)
@@ -407,11 +422,14 @@ else:
         f'<div class="ia-request-id">{html.escape(request_id)}</div></div>',
         unsafe_allow_html=True,
     )
-    metric_columns = st.columns(4)
+    metric_columns = st.columns(5)
     metric_columns[0].metric("SQL 尝试", result.get("attempts", 0))
     metric_columns[1].metric("证据行数", len(rows))
     metric_columns[2].metric("质量复核", "通过" if approved else "需复核")
     metric_columns[3].metric("置信度", f"{confidence:.0%}")
+    metric_columns[4].metric(
+        "端到端耗时", format_duration(float(result.get("total_duration_ms", 0) or 0))
+    )
 
     report_tab, evidence_tab, trace_tab, review_tab = st.tabs(
         ["分析报告", "数据证据", "执行过程", "质量审查"]
@@ -465,7 +483,16 @@ else:
                 st.caption(" · ".join(metrics))
         with timeline_column:
             st.markdown('<div class="ia-section-title">执行轨迹</div>', unsafe_allow_html=True)
-            render_trace(result.get("trace", []))
+            trace = result.get("trace", [])
+            render_trace(trace)
+            timed_events = [event for event in trace if event.get("duration_ms") is not None]
+            if timed_events:
+                slowest = max(timed_events, key=lambda event: float(event.get("duration_ms", 0)))
+                slowest_label = NODE_LABELS.get(slowest.get("node", ""), slowest.get("node", "未知节点"))
+                st.caption(
+                    f"最耗时节点：{slowest_label} · "
+                    f"{format_duration(float(slowest.get('duration_ms', 0) or 0))}"
+                )
 
     with review_tab:
         banner_class = "" if approved else " rejected"

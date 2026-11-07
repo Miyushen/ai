@@ -1,4 +1,6 @@
 import json
+from functools import wraps
+from time import perf_counter
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -36,8 +38,27 @@ def _llm() -> ChatOpenAI:
     )
 
 
-def _trace(node: str, status: str, detail: str) -> list[dict[str, str]]:
+def _trace(node: str, status: str, detail: str) -> list[dict[str, Any]]:
     return [{"node": node, "status": status, "detail": detail}]
+
+
+def _timed_node(node: str):
+    """Attach wall-clock duration to every completed graph node event."""
+
+    def decorate(function):
+        @wraps(function)
+        def wrapped(state: AgentState) -> dict[str, Any]:
+            started_at = perf_counter()
+            result = function(state)
+            duration_ms = round((perf_counter() - started_at) * 1000, 2)
+            for event in result.get("trace", []):
+                event.setdefault("node", node)
+                event.setdefault("duration_ms", duration_ms)
+            return result
+
+        return wrapped
+
+    return decorate
 
 
 def _message_text(message: Any) -> str:
@@ -56,6 +77,7 @@ def _message_text(message: Any) -> str:
     return str(content)
 
 
+@_timed_node("planner")
 def plan_node(state: AgentState) -> dict[str, Any]:
     planner = _llm().with_structured_output(PlanOutput)
     output = planner.invoke(
@@ -78,6 +100,7 @@ def plan_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+@_timed_node("schema")
 def schema_node(_: AgentState) -> dict[str, Any]:
     schema = get_business_schema()
     return {
@@ -86,6 +109,7 @@ def schema_node(_: AgentState) -> dict[str, Any]:
     }
 
 
+@_timed_node("sql_generator")
 def sql_generation_node(state: AgentState) -> dict[str, Any]:
     generator = _llm().with_structured_output(SqlOutput)
     previous_error = state.get("error") or "none"
@@ -123,6 +147,7 @@ def sql_generation_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+@_timed_node("sql_guard")
 def validate_sql_node(state: AgentState) -> dict[str, Any]:
     settings = get_settings()
     try:
@@ -139,6 +164,7 @@ def validate_sql_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+@_timed_node("executor")
 def execute_sql_node(state: AgentState) -> dict[str, Any]:
     try:
         columns, rows = execute_read_only(state["sql"])
@@ -163,6 +189,7 @@ def execute_sql_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+@_timed_node("analyst")
 def analysis_node(state: AgentState) -> dict[str, Any]:
     analyst = _llm().with_structured_output(AnalysisOutput)
     evidence = {
@@ -195,6 +222,7 @@ def analysis_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+@_timed_node("reviewer")
 def review_node(state: AgentState) -> dict[str, Any]:
     reviewer = _llm().with_structured_output(ReviewOutput)
     review_payload = {
@@ -227,6 +255,7 @@ def review_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+@_timed_node("reporter")
 def report_node(state: AgentState) -> dict[str, Any]:
     analysis = state["analysis"]
     review = state.get("review", {})
@@ -253,6 +282,7 @@ def report_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+@_timed_node("failure")
 def failure_node(state: AgentState) -> dict[str, Any]:
     error = state.get("error") or "The agent could not complete the analysis."
     return {

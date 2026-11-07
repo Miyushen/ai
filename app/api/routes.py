@@ -1,4 +1,5 @@
 import logging
+from time import perf_counter
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -48,6 +49,7 @@ async def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
         )
 
     request_id = str(uuid4())
+    started_at = perf_counter()
     try:
         state = await run_in_threadpool(run_agent, payload.question, request_id)
     except Exception as exc:
@@ -59,6 +61,14 @@ async def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
                 "and API billing, then retry."
             ),
         ) from exc
+
+    total_duration_ms = round((perf_counter() - started_at) * 1000, 2)
+    logger.info(
+        "Agent execution completed request_id=%s duration_ms=%.2f attempts=%s",
+        request_id,
+        total_duration_ms,
+        state.get("attempts", 0),
+    )
 
     return AnalyzeResponse(
         request_id=request_id,
@@ -73,6 +83,7 @@ async def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
         review=state.get("review", {}),
         trace=state.get("trace", []),
         attempts=state.get("attempts", 0),
+        total_duration_ms=total_duration_ms,
         error=state.get("error"),
     )
 

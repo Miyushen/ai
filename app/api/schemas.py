@@ -7,6 +7,13 @@ class AnalyzeRequest(BaseModel):
     question: str = Field(min_length=5, max_length=1000)
 
 
+class TraceEvent(BaseModel):
+    node: str
+    status: str
+    detail: str
+    duration_ms: float = Field(default=0, ge=0)
+
+
 class AnalyzeResponse(BaseModel):
     request_id: str
     question: str
@@ -18,8 +25,9 @@ class AnalyzeResponse(BaseModel):
     rows: list[dict[str, Any]] = Field(default_factory=list)
     analysis: dict[str, Any] = Field(default_factory=dict)
     review: dict[str, Any] = Field(default_factory=dict)
-    trace: list[dict[str, str]] = Field(default_factory=list)
+    trace: list[TraceEvent] = Field(default_factory=list)
     attempts: int = 0
+    total_duration_ms: float = Field(default=0, ge=0)
     error: str | None = None
 
 

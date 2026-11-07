@@ -6,6 +6,7 @@ class TraceEvent(TypedDict):
     node: str
     status: str
     detail: str
+    duration_ms: float
 
 
 class AgentState(TypedDict, total=False):

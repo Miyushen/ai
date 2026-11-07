@@ -10,6 +10,18 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
 QUESTIONS_PATH = Path(__file__).parents[1] / "evals" / "questions.json"
 
 
+def collect_node_durations(trace: list[dict]) -> dict[str, float]:
+    """Sum repeated node attempts so repair loops remain visible in evaluation output."""
+    durations: dict[str, float] = {}
+    for event in trace:
+        node = event.get("node")
+        duration_ms = event.get("duration_ms")
+        if not isinstance(node, str) or not isinstance(duration_ms, (int, float)):
+            continue
+        durations[node] = round(durations.get(node, 0) + float(duration_ms), 2)
+    return durations
+
+
 def main() -> None:
     questions = json.loads(QUESTIONS_PATH.read_text(encoding="utf-8"))
     results = []
@@ -43,6 +55,8 @@ def main() -> None:
                 "review_approved": payload.get("review", {}).get("approved", False),
                 "expected_term_recall": len(terms_found) / len(case["expected_terms"]),
                 "attempts": payload.get("attempts"),
+                "agent_duration_seconds": round(payload.get("total_duration_ms", 0) / 1000, 2),
+                "node_duration_ms": collect_node_durations(payload.get("trace", [])),
                 "error": request_error,
             }
         )
@@ -52,6 +66,10 @@ def main() -> None:
     output_dir.mkdir(exist_ok=True)
     successful = [result for result in results if result["status_code"] == 200]
     latencies = [result["latency_seconds"] for result in results]
+    node_samples: dict[str, list[float]] = {}
+    for result in successful:
+        for node, duration_ms in result["node_duration_ms"].items():
+            node_samples.setdefault(node, []).append(duration_ms)
     summary = {
         "total_cases": len(results),
         "http_success_rate": len(successful) / len(results),
@@ -61,6 +79,10 @@ def main() -> None:
         ),
         "median_latency_seconds": round(statistics.median(latencies), 2),
         "max_latency_seconds": round(max(latencies), 2),
+        "mean_node_duration_ms": {
+            node: round(statistics.fmean(samples), 2)
+            for node, samples in sorted(node_samples.items())
+        },
     }
     output_path = output_dir / "eval-results.json"
     output_path.write_text(

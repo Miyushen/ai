@@ -36,8 +36,8 @@ The OpenAI integration follows the official [OpenAI API quickstart](https://plat
 - PostgreSQL read-only transactions, statement timeouts, and row limits
 - Deterministic ecommerce dataset with several planted business anomalies
 - FastAPI backend and Streamlit operations interface
-- Execution trace, generated SQL, raw evidence, reviewer confidence, and charts
-- Starter evaluation set with latency, completion, review, and keyword-recall metrics
+- Execution trace with per-node latency, end-to-end timing, generated SQL, raw evidence, reviewer confidence, and charts
+- Starter evaluation set with completion, review, keyword recall, end-to-end latency, and per-node latency metrics
 
 ## Quick start
 
@@ -107,7 +107,7 @@ Run the starter end-to-end evaluation after the stack is healthy:
 docker compose exec api python scripts/run_evals.py
 ```
 
-Evaluation output is written to `artifacts/eval-results.json`. Expand the dataset with expected SQL result signatures before presenting benchmark numbers in an interview.
+Evaluation output is written to `artifacts/eval-results.json`, including per-case node timings and aggregate mean node latency. Expand the dataset with expected SQL result signatures before presenting benchmark numbers in an interview.
 
 ### Latest local baseline
 
@@ -144,4 +144,5 @@ tests/           Unit tests
 - Why SQL security must be enforced at AST, transaction, and database-role layers
 - How reviewer feedback is routed into a bounded repair loop
 - How to measure task completion, SQL accuracy, tool success, latency, and cost
+- How per-node timing separates model latency from deterministic SQL and database work
 - How planted anomalies make the demo repeatable without hard-coding conclusions

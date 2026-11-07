@@ -10,6 +10,7 @@ def test_empty_query_results_request_sql_repair() -> None:
     assert result["rows"] == []
     assert "no evidence rows" in result["error"]
     assert result["trace"][0]["status"] == "retry"
+    assert result["trace"][0]["duration_ms"] >= 0
 
 
 def test_non_empty_query_results_continue() -> None:
@@ -20,3 +21,4 @@ def test_non_empty_query_results_continue() -> None:
     assert result["rows"] == rows
     assert result["error"] is None
     assert result["trace"][0]["status"] == "ok"
+    assert result["trace"][0]["duration_ms"] >= 0
