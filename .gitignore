@@ -1,9 +1,12 @@
 .env
 .venv/
+.build/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.build/
+.chart-data-*/
 .coverage
 htmlcov/
 artifacts/
