@@ -2,27 +2,56 @@
   {
     "id": "regional_decline",
     "question": "过去30天哪个地区的销售额下降最明显？请与之前30天比较。",
-    "expected_terms": ["North", "下降"]
+    "expected_terms": ["North", "下降"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders), region_revenue AS (SELECT c.region, ROUND(SUM(CASE WHEN o.order_date BETWEEN a.max_date - INTERVAL '29 days' AND a.max_date THEN oi.quantity * oi.unit_price * (1 - oi.discount) ELSE 0 END), 2) AS current_revenue, ROUND(SUM(CASE WHEN o.order_date BETWEEN a.max_date - INTERVAL '59 days' AND a.max_date - INTERVAL '30 days' THEN oi.quantity * oi.unit_price * (1 - oi.discount) ELSE 0 END), 2) AS previous_revenue FROM orders o JOIN customers c ON c.id = o.customer_id JOIN order_items oi ON oi.order_id = o.id CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '59 days' AND a.max_date GROUP BY c.region) SELECT region, current_revenue, previous_revenue, ROUND(100 * (current_revenue - previous_revenue) / NULLIF(previous_revenue, 0), 2) AS revenue_change_pct FROM region_revenue ORDER BY revenue_change_pct ASC LIMIT 1",
+      "row_indices": [0],
+      "entity_column": "region",
+      "numeric_columns": ["current_revenue", "previous_revenue"]
+    }
   },
   {
     "id": "electronics_refunds",
     "question": "最近45天电子产品退款率是否异常？请与其他品类比较。",
-    "expected_terms": ["Electronics", "退款"]
+    "expected_terms": ["Electronics", "退款"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders) SELECT p.category, COUNT(r.id) AS refunded_items, COUNT(oi.id) AS total_items, ROUND(COUNT(r.id)::numeric / NULLIF(COUNT(oi.id), 0), 4) AS refund_rate FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id LEFT JOIN refunds r ON r.order_item_id = oi.id CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '44 days' AND a.max_date GROUP BY p.category ORDER BY refund_rate DESC",
+      "row_indices": [0],
+      "entity_column": "category",
+      "numeric_columns": []
+    }
   },
   {
     "id": "paid_search_efficiency",
     "question": "Paid Search 最近30天广告投入是否带来了匹配的访问和销售增长？",
-    "expected_terms": ["Paid Search", "广告"]
+    "expected_terms": ["Paid Search", "广告"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT LEAST((SELECT MAX(order_date) FROM orders), (SELECT MAX(event_date) FROM daily_traffic)) AS max_date), periods AS (SELECT 'recent_30_days' AS period_name, max_date - INTERVAL '29 days' AS start_date, max_date AS end_date FROM anchor UNION ALL SELECT 'previous_30_days', max_date - INTERVAL '59 days', max_date - INTERVAL '30 days' FROM anchor), traffic AS (SELECT p.period_name, ROUND(SUM(d.ad_spend), 2) AS ad_spend, SUM(d.visits) AS visits FROM periods p JOIN daily_traffic d ON d.event_date BETWEEN p.start_date AND p.end_date AND d.channel = 'Paid Search' GROUP BY p.period_name), revenue AS (SELECT p.period_name, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS revenue FROM periods p JOIN orders o ON o.order_date BETWEEN p.start_date AND p.end_date AND o.channel = 'Paid Search' JOIN order_items oi ON oi.order_id = o.id GROUP BY p.period_name) SELECT p.period_name, t.ad_spend, t.visits, r.revenue FROM periods p JOIN traffic t ON t.period_name = p.period_name JOIN revenue r ON r.period_name = p.period_name ORDER BY p.start_date DESC",
+      "row_indices": [0, 1],
+      "numeric_columns": ["ad_spend", "visits", "revenue"]
+    }
   },
   {
     "id": "channel_revenue",
     "question": "按渠道比较最近90天收入，并指出贡献最高和最低的渠道。",
-    "expected_terms": ["渠道", "收入"]
+    "expected_terms": ["渠道", "收入"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders) SELECT o.channel, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS revenue FROM orders o JOIN order_items oi ON oi.order_id = o.id CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '89 days' AND a.max_date GROUP BY o.channel ORDER BY revenue DESC",
+      "row_indices": [0, -1],
+      "entity_column": "channel",
+      "numeric_columns": ["revenue"]
+    }
   },
   {
     "id": "refund_reasons",
     "question": "退款最常见的三个原因是什么，各自涉及多少退款金额？",
-    "expected_terms": ["退款", "原因"]
+    "expected_terms": ["退款", "原因"],
+    "oracle": {
+      "sql": "SELECT reason, COUNT(*) AS refund_count, ROUND(SUM(amount), 2) AS refund_amount FROM refunds GROUP BY reason ORDER BY refund_count DESC, refund_amount DESC LIMIT 3",
+      "row_indices": [0, 1, 2],
+      "entity_column": "reason",
+      "numeric_columns": ["refund_amount"]
+    }
   }
 ]
 

@@ -88,7 +88,16 @@ def plan_node(state: AgentState) -> dict[str, Any]:
                     "small evidence-driven analysis plan. Do not invent unavailable data."
                 )
             ),
-            HumanMessage(content=state["question"]),
+            HumanMessage(
+                content=json.dumps(
+                    {
+                        "question": state["question"],
+                        "previous_analysis": state.get("previous_analysis", {}),
+                    },
+                    ensure_ascii=False,
+                    default=str,
+                )
+            ),
         ]
     )
     return {
@@ -120,6 +129,7 @@ def sql_generation_node(state: AgentState) -> dict[str, Any]:
         "database_schema": state["schema"],
         "previous_error": previous_error,
         "review_feedback": review.get("retry_instruction") or review.get("issues", []),
+        "previous_analysis": state.get("previous_analysis", {}),
     }
     output = generator.invoke(
         [
@@ -129,6 +139,15 @@ def sql_generation_node(state: AgentState) -> dict[str, Any]:
                     "provided tables and columns. Prefer explicit joins, clear aliases, and evidence "
                     "that can be inspected. Never emit INSERT, UPDATE, DELETE, DDL, comments, or "
                     "multiple statements. Metric definitions are business guidance, not executable SQL. "
+                    "For relative periods such as recent 30 days, anchor the window to the relevant "
+                    "table's max_date from data_coverage, never CURRENT_DATE, unless the user explicitly "
+                    "requests the system date. "
+                    "Use business_metrics as authoritative metric definitions. For Chinese '收入' or "
+                    "English 'revenue', use the revenue definition; use net_revenue only when the user "
+                    "explicitly asks for net revenue or revenue after refunds. "
+                    "When the question asks for highest, lowest, top, or bottom groups, compute ranks "
+                    "over the complete grouped result in a CTE and filter to the requested extrema "
+                    "before the final SELECT so the server row limit cannot hide a required extreme. "
                     "Use exactly the comparison group or time period requested by the user; do not "
                     "invent historical cohorts, alternate metric definitions, or significance tests. "
                     "Keep the query concise with no more than three CTEs."
@@ -264,6 +283,7 @@ def report_node(state: AgentState) -> dict[str, Any]:
         "analysis": analysis,
         "review": review,
         "sql": state["sql"],
+        "previous_question": state.get("previous_analysis", {}).get("question"),
     }
     response = _llm().invoke(
         [

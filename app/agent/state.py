@@ -12,6 +12,7 @@ class TraceEvent(TypedDict):
 class AgentState(TypedDict, total=False):
     request_id: str
     question: str
+    previous_analysis: dict[str, Any]
     plan: dict[str, Any]
     schema: dict[str, Any]
     sql: str

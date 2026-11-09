@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "InsightAgent"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
     database_url: str = "postgresql+psycopg://insight:insight@localhost:5432/insight"
     openai_api_key: SecretStr | None = None
     openai_base_url: str = "https://api.openai.com/v1"

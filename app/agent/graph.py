@@ -114,10 +114,15 @@ def get_graph():
     return builder.compile()
 
 
-def run_agent(question: str, request_id: str) -> AgentState:
+def run_agent(
+    question: str,
+    request_id: str,
+    previous_analysis: dict | None = None,
+) -> AgentState:
     initial: AgentState = {
         "request_id": request_id,
         "question": question,
+        "previous_analysis": previous_analysis or {},
         "trace": [],
     }
     return get_graph().invoke(initial)

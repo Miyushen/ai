@@ -144,6 +144,11 @@ st.markdown(
     }
     .ia-result-title { font-size: 1rem; font-weight: 740; }
     .ia-request-id { color: #858a90; font-family: monospace; font-size: 0.7rem; }
+    .ia-followup {
+        margin: 0.8rem 0 0.2rem; padding: 0.8rem 0.95rem;
+        border-left: 3px solid var(--green); background: var(--green-soft);
+        color: #315b50; font-size: 0.8rem;
+    }
     div[data-testid="stTabs"] [data-baseweb="tab-list"] { gap: 1.2rem; border-bottom: 1px solid var(--line); }
     div[data-testid="stTabs"] [data-baseweb="tab"] { height: 44px; padding: 0; font-weight: 650; color: #666b71; }
     div[data-testid="stTabs"] [aria-selected="true"] { color: var(--green); }
@@ -275,9 +280,15 @@ def render_findings(items: list[str]) -> None:
         st.markdown(f'<ul class="ia-findings">{content}</ul>', unsafe_allow_html=True)
 
 
-def run_analysis(question: str) -> dict[str, Any]:
+def run_analysis_with_context(
+    question: str,
+    parent_request_id: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"question": question}
+    if parent_request_id:
+        payload["parent_request_id"] = parent_request_id
     response = requests.post(
-        f"{API_BASE_URL}/api/v1/analyze", json={"question": question}, timeout=600
+        f"{API_BASE_URL}/api/v1/analyze", json=payload, timeout=600
     )
     if not response.ok:
         try:
@@ -288,26 +299,50 @@ def run_analysis(question: str) -> dict[str, Any]:
     return response.json()
 
 
-def remember_result(result: dict[str, Any]) -> None:
-    history = st.session_state.setdefault("run_history", [])
-    history.insert(
-        0,
-        {
-            "request_id": result.get("request_id", ""),
-            "question": result.get("question", "未命名分析"),
-            "result": result,
-            "created_at": datetime.now().strftime("%H:%M"),
-        },
+@st.cache_data(ttl=5, show_spinner=False)
+def get_run_history() -> list[dict[str, Any]]:
+    try:
+        response = requests.get(f"{API_BASE_URL}/api/v1/runs", params={"limit": 20}, timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return []
+
+
+def get_run_result(request_id: str) -> dict[str, Any]:
+    response = requests.get(f"{API_BASE_URL}/api/v1/runs/{request_id}", timeout=10)
+    response.raise_for_status()
+    return response.json()
+
+
+def format_run_time(value: str | None) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone().strftime("%m-%d %H:%M")
+    except ValueError:
+        return ""
+
+
+def build_markdown_report(result: dict[str, Any]) -> str:
+    sql = result.get("sql") or "-- 未生成 SQL"
+    return (
+        f"# InsightAgent 分析报告\n\n"
+        f"**问题：** {result.get('question', '')}\n\n"
+        f"**请求 ID：** `{result.get('request_id', '')}`\n\n"
+        f"{result.get('report', '')}\n\n"
+        f"## 查询 SQL\n\n```sql\n{sql}\n```\n"
     )
-    st.session_state["run_history"] = history[:6]
+
+
+def remember_result(result: dict[str, Any]) -> None:
     st.session_state["last_result"] = result
+    get_run_history.clear()
 
 
 if "question_input" not in st.session_state:
     st.session_state["question_input"] = EXAMPLES["地区趋势"]
-if "run_history" not in st.session_state:
-    st.session_state["run_history"] = []
-
 health = get_health()
 is_online = health.get("status") == "ok" and health.get("database") == "ok"
 
@@ -327,16 +362,25 @@ with st.sidebar:
         st.rerun()
 
     st.markdown('<div class="ia-section-label">最近任务</div>', unsafe_allow_html=True)
-    history = st.session_state.get("run_history", [])
+    history = get_run_history()
     if history:
-        for index, item in enumerate(history):
+        for index, item in enumerate(history[:8]):
             label = item["question"] if len(item["question"]) <= 24 else f'{item["question"][:23]}…'
-            if st.button(
-                label, key=f'history_{item["request_id"]}_{index}', icon=":material/history:",
-                help=item["question"], width="stretch",
-            ):
-                st.session_state["last_result"] = item["result"]
-                st.rerun()
+            status = item.get("status")
+            if status == "completed":
+                time_label = format_run_time(item.get("created_at"))
+                if st.button(
+                    label, key=f'history_{item["request_id"]}_{index}', icon=":material/history:",
+                    help=f"{time_label} · {item['question']}", width="stretch",
+                ):
+                    try:
+                        st.session_state["last_result"] = get_run_result(item["request_id"])
+                        st.rerun()
+                    except requests.RequestException:
+                        st.error("历史任务读取失败。")
+            else:
+                state_label = "执行中" if status == "running" else "失败"
+                st.caption(f"{state_label} · {label}")
     else:
         st.caption("暂无历史任务")
 
@@ -395,7 +439,7 @@ if submitted:
         with st.status("正在执行分析工作流", expanded=True) as status:
             st.write("正在生成查询并核验证据…")
             try:
-                new_result = run_analysis(cleaned_question)
+                new_result = run_analysis_with_context(cleaned_question)
                 remember_result(new_result)
                 status.update(label="分析完成", state="complete", expanded=False)
             except (requests.RequestException, RuntimeError) as exc:
@@ -431,13 +475,59 @@ else:
         "端到端耗时", format_duration(float(result.get("total_duration_ms", 0) or 0))
     )
 
+    if result.get("parent_request_id"):
+        st.markdown(
+            '<div class="ia-followup">本次分析基于上一轮结果继续追问，'
+            'Planner 和 SQL Generator 已获得受控历史上下文。</div>',
+            unsafe_allow_html=True,
+        )
+
+    with st.expander("基于本次结果继续追问", icon=":material/forum:"):
+        with st.form(f"follow_up_form_{request_id}", border=False):
+            follow_up_question = st.text_area(
+                "追问内容",
+                placeholder="例如：进一步拆分贡献最高渠道的地区表现",
+                key=f"follow_up_question_{request_id}",
+            )
+            follow_up_submitted = st.form_submit_button(
+                "继续分析", type="primary", icon=":material/arrow_forward:", width="stretch"
+            )
+        if follow_up_submitted:
+            cleaned_follow_up = follow_up_question.strip()
+            if len(cleaned_follow_up) < 5:
+                st.warning("追问内容至少需要 5 个字符。")
+            else:
+                with st.status("正在结合上一轮证据继续分析", expanded=True) as status:
+                    try:
+                        follow_up_result = run_analysis_with_context(
+                            cleaned_follow_up,
+                            parent_request_id=request_id,
+                        )
+                        remember_result(follow_up_result)
+                        status.update(label="追问分析完成", state="complete", expanded=False)
+                        st.rerun()
+                    except (requests.RequestException, RuntimeError) as exc:
+                        status.update(label="追问分析失败", state="error", expanded=True)
+                        st.error(str(exc), icon=":material/error:")
+
     report_tab, evidence_tab, trace_tab, review_tab = st.tabs(
         ["分析报告", "数据证据", "执行过程", "质量审查"]
     )
     with report_tab:
         report_column, finding_column = st.columns([1.7, 1], gap="large")
         with report_column:
-            st.markdown('<div class="ia-section-title">分析结论</div>', unsafe_allow_html=True)
+            report_title, report_action = st.columns([1, 0.42], vertical_alignment="center")
+            with report_title:
+                st.markdown('<div class="ia-section-title">分析结论</div>', unsafe_allow_html=True)
+            with report_action:
+                st.download_button(
+                    "导出报告",
+                    data=build_markdown_report(result).encode("utf-8"),
+                    file_name=f"insight-agent-{request_id[:8]}.md",
+                    mime="text/markdown",
+                    icon=":material/download:",
+                    width="stretch",
+                )
             st.markdown(result.get("report", "暂无报告。"))
         with finding_column:
             analysis = result.get("analysis", {})
