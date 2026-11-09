@@ -122,6 +122,9 @@ st.markdown(
         color: #4f5459; font-weight: 550; padding-left: 0.45rem;
     }
     section[data-testid="stSidebar"] .stButton button:hover { background: #e6e9e8; color: var(--ink); }
+    section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+        color: #858a90; font-size: 0.68rem; margin: -0.42rem 0 0.42rem 2rem;
+    }
     section[data-testid="stSidebar"] .stButton button[kind="primary"] {
         background: var(--green) !important; border-color: var(--green) !important;
         color: #ffffff !important; justify-content: center;
@@ -139,16 +142,41 @@ st.markdown(
     div[data-testid="stStatusWidget"] { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 
     .ia-result-head {
-        display: flex; align-items: center; justify-content: space-between;
-        margin: 1.6rem 0 0.65rem;
+        display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: end;
+        margin: 1.65rem 0 0.85rem; padding: 0 0 0.9rem;
+        border-bottom: 1px solid var(--line);
     }
-    .ia-result-title { font-size: 1rem; font-weight: 740; }
-    .ia-request-id { color: #858a90; font-family: monospace; font-size: 0.7rem; }
+    .ia-result-kicker { color: var(--green); font-size: 0.72rem; font-weight: 760; margin-bottom: 0.25rem; }
+    .ia-result-title { font-size: 1.15rem; line-height: 1.45; font-weight: 740; max-width: 920px; }
+    .ia-result-meta { color: #7b8085; font-size: 0.72rem; margin-top: 0.35rem; }
+    .ia-request-id { color: #858a90; font-family: monospace; font-size: 0.7rem; white-space: nowrap; }
     .ia-followup {
-        margin: 0.8rem 0 0.2rem; padding: 0.8rem 0.95rem;
+        margin: 0.8rem 0 0.55rem; padding: 0.8rem 0.95rem;
         border-left: 3px solid var(--green); background: var(--green-soft);
         color: #315b50; font-size: 0.8rem;
     }
+    .ia-stage-label { margin: 1rem 0 0.5rem; color: #62676c; font-size: 0.74rem; font-weight: 720; }
+    .ia-stage-strip {
+        display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 0.35rem;
+        margin-bottom: 0.9rem;
+    }
+    .ia-stage {
+        min-width: 0; padding: 0.55rem 0.52rem; border: 1px solid var(--line);
+        border-radius: 4px; background: var(--panel);
+    }
+    .ia-stage.ok { border-color: #b9d8cc; background: #f4faf7; }
+    .ia-stage.retry { border-color: #e5c58f; background: #fff9ef; }
+    .ia-stage.failed { border-color: #e4b8b2; background: var(--red-soft); }
+    .ia-stage-top { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+    .ia-stage-index {
+        width: 18px; height: 18px; flex: 0 0 18px; display: grid; place-items: center;
+        border-radius: 50%; background: #a5aaae; color: #fff; font-size: 0.62rem; font-weight: 760;
+    }
+    .ia-stage.ok .ia-stage-index { background: var(--green); }
+    .ia-stage.retry .ia-stage-index { background: var(--amber); }
+    .ia-stage.failed .ia-stage-index { background: var(--red); }
+    .ia-stage-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; font-weight: 720; }
+    .ia-stage-time { margin: 0.28rem 0 0 1.45rem; color: #858a90; font-size: 0.64rem; }
     div[data-testid="stTabs"] [data-baseweb="tab-list"] { gap: 1.2rem; border-bottom: 1px solid var(--line); }
     div[data-testid="stTabs"] [data-baseweb="tab"] { height: 44px; padding: 0; font-weight: 650; color: #666b71; }
     div[data-testid="stTabs"] [aria-selected="true"] { color: var(--green); }
@@ -192,11 +220,18 @@ st.markdown(
     .ia-review-main { font-weight: 740; }
     .ia-review-score { font-size: 1.2rem; font-weight: 780; }
     .ia-empty {
-        margin-top: 1.25rem; padding: 2.4rem 1rem; text-align: center;
+        margin-top: 1.25rem; padding: 2.2rem 1rem 1.4rem; text-align: center;
         border-top: 1px solid var(--line); color: var(--muted);
     }
     .ia-empty-title { color: #474b50; font-weight: 700; font-size: 0.92rem; }
     .ia-empty-meta { margin-top: 0.35rem; font-size: 0.78rem; }
+    .ia-empty-flow {
+        max-width: 760px; margin: 1.45rem auto 0; display: grid;
+        grid-template-columns: repeat(4, 1fr); gap: 0.5rem;
+    }
+    .ia-empty-step { padding: 0.65rem 0.5rem; border-top: 2px solid #cdd2d5; text-align: left; }
+    .ia-empty-step strong { display: block; color: #44494e; font-size: 0.78rem; }
+    .ia-empty-step span { display: block; color: #858a90; font-size: 0.68rem; margin-top: 0.2rem; }
 
     [data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
     [data-testid="stCode"] { border-radius: 6px; }
@@ -207,6 +242,9 @@ st.markdown(
         .block-container { padding: 1rem 0.85rem 2rem; }
         .ia-header { grid-template-columns: 1fr; align-items: start; }
         .ia-title { font-size: 1.35rem; }
+        .ia-result-head { grid-template-columns: 1fr; align-items: start; }
+        .ia-stage-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ia-empty-flow { grid-template-columns: repeat(2, 1fr); }
         .ia-trace-row { grid-template-columns: 1fr; gap: 0.2rem; }
         .ia-request-id { display: none; }
         .ia-review-banner { align-items: flex-start; }
@@ -272,6 +310,40 @@ def render_trace(trace: list[dict[str, Any]]) -> None:
             f'<div class="ia-trace-detail">{html.escape(event.get("detail", ""))}</div></div>'
         )
     st.markdown(f'<div class="ia-timeline">{"".join(rows)}</div>', unsafe_allow_html=True)
+
+
+def render_stage_overview(trace: list[dict[str, Any]]) -> None:
+    events_by_node: dict[str, list[dict[str, Any]]] = {}
+    for event in trace:
+        events_by_node.setdefault(event.get("node", ""), []).append(event)
+
+    stages = []
+    for index, node in enumerate(NODE_LABELS, start=1):
+        if node == "failure":
+            continue
+        events = events_by_node.get(node, [])
+        statuses = {event.get("status", "ok") for event in events}
+        if "failed" in statuses:
+            css_status = "failed"
+        elif "retry" in statuses or len(events) > 1:
+            css_status = "retry"
+        elif events:
+            css_status = "ok"
+        else:
+            css_status = "pending"
+        duration_ms = sum(float(event.get("duration_ms", 0) or 0) for event in events)
+        duration = format_duration(duration_ms) if events else "等待"
+        stages.append(
+            f'<div class="ia-stage {css_status}" title="{html.escape(NODE_LABELS[node])}">'
+            f'<div class="ia-stage-top"><span class="ia-stage-index">{index}</span>'
+            f'<span class="ia-stage-name">{html.escape(NODE_LABELS[node])}</span></div>'
+            f'<div class="ia-stage-time">{html.escape(duration)}</div></div>'
+        )
+    st.markdown(
+        '<div class="ia-stage-label">工作流阶段</div>'
+        f'<div class="ia-stage-strip">{"".join(stages)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_findings(items: list[str]) -> None:
@@ -361,16 +433,39 @@ with st.sidebar:
         st.session_state["quick_select"] = None
         st.rerun()
 
-    st.markdown('<div class="ia-section-label">最近任务</div>', unsafe_allow_html=True)
-    history = get_run_history()
+    all_history = get_run_history()
+    st.markdown(
+        f'<div class="ia-section-label">最近任务 · {len(all_history)}</div>',
+        unsafe_allow_html=True,
+    )
+    history_query = st.text_input(
+        "搜索历史任务", placeholder="搜索问题", label_visibility="collapsed",
+        key="history_query",
+    )
+    history_filter = st.segmented_control(
+        "任务状态", options=["全部", "通过", "需复核"], default="全部",
+        label_visibility="collapsed", key="history_filter",
+    )
+    history = all_history
+    if history_query.strip():
+        query = history_query.strip().lower()
+        history = [item for item in history if query in item.get("question", "").lower()]
+    if history_filter == "通过":
+        history = [item for item in history if item.get("approved") is True]
+    elif history_filter == "需复核":
+        history = [item for item in history if item.get("approved") is not True]
+
     if history:
         for index, item in enumerate(history[:8]):
             label = item["question"] if len(item["question"]) <= 24 else f'{item["question"][:23]}…'
             status = item.get("status")
             if status == "completed":
                 time_label = format_run_time(item.get("created_at"))
+                duration_label = format_duration(float(item.get("total_duration_ms") or 0))
+                approved_label = "已通过" if item.get("approved") else "需复核"
+                item_icon = ":material/check_circle:" if item.get("approved") else ":material/warning:"
                 if st.button(
-                    label, key=f'history_{item["request_id"]}_{index}', icon=":material/history:",
+                    label, key=f'history_{item["request_id"]}_{index}', icon=item_icon,
                     help=f"{time_label} · {item['question']}", width="stretch",
                 ):
                     try:
@@ -378,11 +473,12 @@ with st.sidebar:
                         st.rerun()
                     except requests.RequestException:
                         st.error("历史任务读取失败。")
+                st.caption(f"{time_label} · {duration_label} · {approved_label}")
             else:
                 state_label = "执行中" if status == "running" else "失败"
                 st.caption(f"{state_label} · {label}")
     else:
-        st.caption("暂无历史任务")
+        st.caption("没有匹配的历史任务")
 
     st.markdown('<div class="ia-section-label">系统状态</div>', unsafe_allow_html=True)
     api_ok = health.get("status") == "ok"
@@ -451,7 +547,13 @@ if not result:
     st.markdown(
         """
         <div class="ia-empty"><div class="ia-empty-title">暂无分析结果</div>
-        <div class="ia-empty-meta">选择快捷问题或输入新的业务问题</div></div>
+        <div class="ia-empty-meta">选择快捷问题或输入新的业务问题</div>
+        <div class="ia-empty-flow">
+        <div class="ia-empty-step"><strong>1 · 规划</strong><span>拆解业务问题</span></div>
+        <div class="ia-empty-step"><strong>2 · 查询</strong><span>生成并校验 SQL</span></div>
+        <div class="ia-empty-step"><strong>3 · 分析</strong><span>从证据提取结论</span></div>
+        <div class="ia-empty-step"><strong>4 · 复核</strong><span>Reviewer 独立检查</span></div>
+        </div></div>
         """,
         unsafe_allow_html=True,
     )
@@ -461,9 +563,19 @@ else:
     confidence = float(review.get("confidence", 0) or 0)
     rows = result.get("rows", [])
     request_id = result.get("request_id", "")
+    run_summary = next(
+        (item for item in all_history if item.get("request_id") == request_id),
+        {},
+    )
+    created_at = format_run_time(run_summary.get("created_at"))
+    model_name = run_summary.get("model") or health.get("model", "未知模型")
+    meta_parts = [part for part in [created_at, str(model_name), f"ID {request_id[:8]}"] if part]
     st.markdown(
-        f'<div class="ia-result-head"><div class="ia-result-title">分析结果</div>'
-        f'<div class="ia-request-id">{html.escape(request_id)}</div></div>',
+        '<div class="ia-result-head"><div>'
+        '<div class="ia-result-kicker">分析结果</div>'
+        f'<div class="ia-result-title">{html.escape(result.get("question", "未命名分析"))}</div>'
+        f'<div class="ia-result-meta">{html.escape(" · ".join(meta_parts))}</div></div>'
+        f'<div class="ia-request-id" title="{html.escape(request_id)}">{html.escape(request_id[:8])}</div></div>',
         unsafe_allow_html=True,
     )
     metric_columns = st.columns(5)
@@ -474,13 +586,26 @@ else:
     metric_columns[4].metric(
         "端到端耗时", format_duration(float(result.get("total_duration_ms", 0) or 0))
     )
+    render_stage_overview(result.get("trace", []))
 
     if result.get("parent_request_id"):
-        st.markdown(
-            '<div class="ia-followup">本次分析基于上一轮结果继续追问，'
-            'Planner 和 SQL Generator 已获得受控历史上下文。</div>',
-            unsafe_allow_html=True,
-        )
+        lineage_info, lineage_action = st.columns([1, 0.2], vertical_alignment="center")
+        with lineage_info:
+            st.markdown(
+                '<div class="ia-followup">本次分析基于上一轮结果继续追问，'
+                'Planner 和 SQL Generator 已获得受控历史上下文。</div>',
+                unsafe_allow_html=True,
+            )
+        with lineage_action:
+            if st.button(
+                "上一轮", icon=":material/arrow_back:", width="stretch",
+                key=f"open_parent_{request_id}", help="打开本次追问的父任务",
+            ):
+                try:
+                    st.session_state["last_result"] = get_run_result(result["parent_request_id"])
+                    st.rerun()
+                except requests.RequestException:
+                    st.error("上一轮任务读取失败。")
 
     with st.expander("基于本次结果继续追问", icon=":material/forum:"):
         with st.form(f"follow_up_form_{request_id}", border=False):

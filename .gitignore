@@ -7,6 +7,7 @@ __pycache__/
 .ruff_cache/
 .build/
 .chart-data-*/
+~$*.pptx
 .coverage
 htmlcov/
 artifacts/
