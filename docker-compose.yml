@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: insight
       POSTGRES_USER: insight
@@ -17,6 +18,7 @@ services:
 
   api:
     build: .
+    restart: unless-stopped
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
@@ -30,12 +32,25 @@ services:
       SQL_TIMEOUT_MS: ${SQL_TIMEOUT_MS:-10000}
       MAX_AGENT_RETRIES: ${MAX_AGENT_RETRIES:-2}
       MODEL_NODE_MAX_ATTEMPTS: ${MODEL_NODE_MAX_ATTEMPTS:-3}
+      MODEL_INPUT_COST_PER_1M: ${MODEL_INPUT_COST_PER_1M:-0}
+      MODEL_OUTPUT_COST_PER_1M: ${MODEL_OUTPUT_COST_PER_1M:-0}
+      UI_URL: http://ui:8501
     command: >-
       sh -c "python -m app.db.seed &&
       uvicorn app.main:app --host 0.0.0.0 --port 8000"
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=3)"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     ports:
       - "8000:8000"
     volumes:
@@ -43,11 +58,13 @@ services:
 
   ui:
     build: .
+    restart: unless-stopped
     environment:
       API_BASE_URL: http://api:8000
     command: streamlit run ui/streamlit_app.py --server.address=0.0.0.0 --server.port=8501
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - "8501:8501"
 

@@ -177,6 +177,10 @@ st.markdown(
     .ia-stage.failed .ia-stage-index { background: var(--red); }
     .ia-stage-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; font-weight: 720; }
     .ia-stage-time { margin: 0.28rem 0 0 1.45rem; color: #858a90; font-size: 0.64rem; }
+    .ia-usage {
+        margin: -0.2rem 0 0.9rem; color: #747a7f; font-size: 0.72rem;
+        text-align: right;
+    }
     div[data-testid="stTabs"] [data-baseweb="tab-list"] { gap: 1.2rem; border-bottom: 1px solid var(--line); }
     div[data-testid="stTabs"] [data-baseweb="tab"] { height: 44px; padding: 0; font-weight: 650; color: #666b71; }
     div[data-testid="stTabs"] [aria-selected="true"] { color: var(--green); }
@@ -496,7 +500,8 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-status_text = "服务在线" if is_online else "服务异常"
+can_analyze = is_online and key_ok
+status_text = "服务在线" if can_analyze else ("历史回放模式" if is_online else "服务异常")
 status_class = "ok" if is_online else "bad"
 st.markdown(
     f"""
@@ -524,8 +529,11 @@ with st.form("analysis_form", clear_on_submit=False, border=True):
     )
     submitted = st.form_submit_button(
         "开始分析", type="primary", icon=":material/play_arrow:",
-        width="stretch", disabled=not is_online,
+        width="stretch", disabled=not can_analyze,
     )
+
+if is_online and not key_ok:
+    st.info("模型密钥未配置，当前仍可从左侧回放全部历史任务和导出报告。")
 
 if submitted:
     cleaned_question = question.strip()
@@ -578,7 +586,9 @@ else:
         f'<div class="ia-request-id" title="{html.escape(request_id)}">{html.escape(request_id[:8])}</div></div>',
         unsafe_allow_html=True,
     )
-    metric_columns = st.columns(5)
+    model_usage = result.get("model_usage", {})
+    usage_available = model_usage.get("usage_available", False)
+    metric_columns = st.columns(6)
     metric_columns[0].metric("SQL 尝试", result.get("attempts", 0))
     metric_columns[1].metric("证据行数", len(rows))
     metric_columns[2].metric("质量复核", "通过" if approved else "需复核")
@@ -586,7 +596,25 @@ else:
     metric_columns[4].metric(
         "端到端耗时", format_duration(float(result.get("total_duration_ms", 0) or 0))
     )
+    metric_columns[5].metric(
+        "Token 用量",
+        f'{int(model_usage.get("total_tokens", 0)):,}' if usage_available else "未提供",
+    )
     render_stage_overview(result.get("trace", []))
+    usage_parts = [f'模型调用 {int(model_usage.get("model_calls", 0))} 次']
+    if usage_available:
+        usage_parts.extend(
+            [
+                f'输入 {int(model_usage.get("input_tokens", 0)):,}',
+                f'输出 {int(model_usage.get("output_tokens", 0)):,}',
+            ]
+        )
+    if model_usage.get("estimated_cost_usd") is not None:
+        usage_parts.append(f'估算成本 ${float(model_usage["estimated_cost_usd"]):.4f}')
+    st.markdown(
+        f'<div class="ia-usage">{html.escape(" · ".join(usage_parts))}</div>',
+        unsafe_allow_html=True,
+    )
 
     if result.get("parent_request_id"):
         lineage_info, lineage_action = st.columns([1, 0.2], vertical_alignment="center")

@@ -9,6 +9,7 @@ from langchain_openai import ChatOpenAI
 from app.agent.schemas import AnalysisOutput, PlanOutput, ReviewOutput, SqlOutput
 from app.agent.state import AgentState
 from app.core.config import get_settings
+from app.services.model_usage import extract_usage_event
 from app.services.schema_service import get_business_schema
 from app.services.sql_executor import execute_read_only
 from app.services.sql_guard import SqlValidationError, validate_and_rewrite_sql
@@ -77,10 +78,26 @@ def _message_text(message: Any) -> str:
     return str(content)
 
 
+def _invoke_structured(
+    node: str,
+    schema: Any,
+    messages: list[Any],
+) -> tuple[Any, list[dict[str, Any]]]:
+    result = _llm().with_structured_output(schema, include_raw=True).invoke(messages)
+    if not isinstance(result, dict):
+        return result, []
+    parsed = result.get("parsed")
+    if parsed is None:
+        error = result.get("parsing_error")
+        raise error or RuntimeError(f"{node} returned no structured output.")
+    return parsed, [extract_usage_event(node, result.get("raw"))]
+
+
 @_timed_node("planner")
 def plan_node(state: AgentState) -> dict[str, Any]:
-    planner = _llm().with_structured_output(PlanOutput)
-    output = planner.invoke(
+    output, usage = _invoke_structured(
+        "planner",
+        PlanOutput,
         [
             SystemMessage(
                 content=(
@@ -98,7 +115,7 @@ def plan_node(state: AgentState) -> dict[str, Any]:
                     default=str,
                 )
             ),
-        ]
+        ],
     )
     return {
         "plan": output.model_dump(),
@@ -106,6 +123,7 @@ def plan_node(state: AgentState) -> dict[str, Any]:
         "review_iterations": 0,
         "error": None,
         "trace": _trace("planner", "ok", f"Created {len(output.steps)} analysis steps."),
+        "model_usage_events": usage,
     }
 
 
@@ -120,7 +138,6 @@ def schema_node(_: AgentState) -> dict[str, Any]:
 
 @_timed_node("sql_generator")
 def sql_generation_node(state: AgentState) -> dict[str, Any]:
-    generator = _llm().with_structured_output(SqlOutput)
     previous_error = state.get("error") or "none"
     review = state.get("review", {})
     prompt = {
@@ -131,7 +148,9 @@ def sql_generation_node(state: AgentState) -> dict[str, Any]:
         "review_feedback": review.get("retry_instruction") or review.get("issues", []),
         "previous_analysis": state.get("previous_analysis", {}),
     }
-    output = generator.invoke(
+    output, usage = _invoke_structured(
+        "sql_generator",
+        SqlOutput,
         [
             SystemMessage(
                 content=(
@@ -154,7 +173,7 @@ def sql_generation_node(state: AgentState) -> dict[str, Any]:
                 )
             ),
             HumanMessage(content=json.dumps(prompt, ensure_ascii=False, default=str)),
-        ]
+        ],
     )
     attempt = state.get("attempts", 0) + 1
     return {
@@ -163,6 +182,7 @@ def sql_generation_node(state: AgentState) -> dict[str, Any]:
         "attempts": attempt,
         "error": None,
         "trace": _trace("sql_generator", "ok", f"Generated SQL attempt {attempt}."),
+        "model_usage_events": usage,
     }
 
 
@@ -210,7 +230,6 @@ def execute_sql_node(state: AgentState) -> dict[str, Any]:
 
 @_timed_node("analyst")
 def analysis_node(state: AgentState) -> dict[str, Any]:
-    analyst = _llm().with_structured_output(AnalysisOutput)
     evidence = {
         "question": state["question"],
         "plan": state["plan"],
@@ -218,7 +237,9 @@ def analysis_node(state: AgentState) -> dict[str, Any]:
         "columns": state.get("columns", []),
         "rows": state.get("rows", [])[:80],
     }
-    output = analyst.invoke(
+    output, usage = _invoke_structured(
+        "analyst",
+        AnalysisOutput,
         [
             SystemMessage(
                 content=(
@@ -228,7 +249,7 @@ def analysis_node(state: AgentState) -> dict[str, Any]:
                 )
             ),
             HumanMessage(content=json.dumps(evidence, ensure_ascii=False, default=str)),
-        ]
+        ],
     )
     analysis = output.model_dump()
     chart = analysis.get("chart")
@@ -238,19 +259,21 @@ def analysis_node(state: AgentState) -> dict[str, Any]:
     return {
         "analysis": analysis,
         "trace": _trace("analyst", "ok", f"Produced {len(output.findings)} findings."),
+        "model_usage_events": usage,
     }
 
 
 @_timed_node("reviewer")
 def review_node(state: AgentState) -> dict[str, Any]:
-    reviewer = _llm().with_structured_output(ReviewOutput)
     review_payload = {
         "question": state["question"],
         "sql": state["sql"],
         "rows": state.get("rows", [])[:80],
         "analysis": state["analysis"],
     }
-    output = reviewer.invoke(
+    output, usage = _invoke_structured(
+        "reviewer",
+        ReviewOutput,
         [
             SystemMessage(
                 content=(
@@ -260,7 +283,7 @@ def review_node(state: AgentState) -> dict[str, Any]:
                 )
             ),
             HumanMessage(content=json.dumps(review_payload, ensure_ascii=False, default=str)),
-        ]
+        ],
     )
     iteration = state.get("review_iterations", 0) + 1
     return {
@@ -271,6 +294,7 @@ def review_node(state: AgentState) -> dict[str, Any]:
             "ok" if output.approved else "retry",
             f"Approved={output.approved}; confidence={output.confidence:.2f}.",
         ),
+        "model_usage_events": usage,
     }
 
 
@@ -299,6 +323,7 @@ def report_node(state: AgentState) -> dict[str, Any]:
     return {
         "report": _message_text(response),
         "trace": _trace("reporter", "ok", "Generated the final evidence-linked report."),
+        "model_usage_events": [extract_usage_event("reporter", response)],
     }
 
 

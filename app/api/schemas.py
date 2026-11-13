@@ -16,6 +16,15 @@ class TraceEvent(BaseModel):
     duration_ms: float = Field(default=0, ge=0)
 
 
+class ModelUsageSummary(BaseModel):
+    model_calls: int = Field(default=0, ge=0)
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+    usage_available: bool = False
+    estimated_cost_usd: float | None = Field(default=None, ge=0)
+
+
 class AnalyzeResponse(BaseModel):
     request_id: str
     parent_request_id: str | None = None
@@ -31,6 +40,7 @@ class AnalyzeResponse(BaseModel):
     trace: list[TraceEvent] = Field(default_factory=list)
     attempts: int = 0
     total_duration_ms: float = Field(default=0, ge=0)
+    model_usage: ModelUsageSummary = Field(default_factory=ModelUsageSummary)
     error: str | None = None
 
 
@@ -44,6 +54,7 @@ class AnalysisRunSummary(BaseModel):
     created_at: datetime
     completed_at: datetime | None = None
     approved: bool | None = None
+    total_tokens: int | None = None
     error: str | None = None
 
 

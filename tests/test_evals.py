@@ -1,3 +1,7 @@
+import json
+from pathlib import Path
+
+from app.services.sql_guard import validate_and_rewrite_sql
 from scripts.run_evals import collect_node_durations, evaluate_golden_result
 
 
@@ -56,3 +60,15 @@ def test_evaluate_golden_result_detects_unsupported_numbers() -> None:
     assert result["gold_entity_recall"] == 1.0
     assert result["gold_numeric_recall"] == 0.0
     assert result["gold_result_score"] == 0.5
+
+
+def test_evaluation_suite_has_fifteen_unique_safe_oracles() -> None:
+    questions_path = Path(__file__).parents[1] / "evals" / "questions.json"
+    cases = json.loads(questions_path.read_text(encoding="utf-8"))
+
+    assert len(cases) == 15
+    assert len({case["id"] for case in cases}) == 15
+    for case in cases:
+        assert len(case["question"]) >= 5
+        assert case["expected_terms"]
+        assert validate_and_rewrite_sql(case["oracle"]["sql"])

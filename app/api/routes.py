@@ -19,6 +19,7 @@ from app.services.run_history import (
     get_analysis_run,
     list_analysis_runs,
 )
+from app.services.model_usage import summarize_model_usage
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -61,6 +62,7 @@ def runs(limit: int = 20) -> list[AnalysisRunSummary]:
             created_at=run.created_at,
             completed_at=run.completed_at,
             approved=(run.result or {}).get("review", {}).get("approved"),
+            total_tokens=(run.result or {}).get("model_usage", {}).get("total_tokens"),
             error=run.error,
         )
         for run in list_analysis_runs(bounded_limit)
@@ -118,6 +120,12 @@ async def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
             f"Model provider request failed ({type(exc).__name__}).",
             total_duration_ms,
         )
+        provider_status = getattr(exc, "status_code", None)
+        if provider_status == 429:
+            raise HTTPException(
+                status_code=429,
+                detail="Model provider rate limit reached. Wait briefly, then retry.",
+            ) from exc
         raise HTTPException(
             status_code=502,
             detail=(
@@ -127,6 +135,11 @@ async def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
         ) from exc
 
     total_duration_ms = round((perf_counter() - started_at) * 1000, 2)
+    model_usage = summarize_model_usage(
+        state.get("model_usage_events", []),
+        getattr(settings, "model_input_cost_per_1m", 0),
+        getattr(settings, "model_output_cost_per_1m", 0),
+    )
     logger.info(
         "Agent execution completed request_id=%s duration_ms=%.2f attempts=%s",
         request_id,
@@ -149,6 +162,7 @@ async def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
         trace=state.get("trace", []),
         attempts=state.get("attempts", 0),
         total_duration_ms=total_duration_ms,
+        model_usage=model_usage,
         error=state.get("error"),
     )
     complete_analysis_run(

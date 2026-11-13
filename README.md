@@ -4,7 +4,7 @@
 
 InsightAgent is an autonomous business data analysis agent built with LangGraph. It turns a business question into a plan, generates and validates read-only SQL, executes it against PostgreSQL, analyzes the evidence, asks an independent reviewer to check the conclusion, and produces an inspectable report.
 
-Version 0.2 adds persistent analysis history and evidence-aware follow-up questions. Completed and failed runs survive browser refreshes and container restarts, and any completed report can become controlled context for the next LangGraph run.
+Version 1.0 is the interview-demo release. It combines persistent analysis history, evidence-aware follow-up questions, model token and cost observability, resumable evaluation, and an offline replay fallback. Completed and failed runs survive browser refreshes and container restarts, and any completed report can become controlled context for the next LangGraph run.
 
 ![InsightAgent demo](docs/screenshots/insight-agent-demo.png)
 
@@ -41,11 +41,13 @@ The OpenAI integration follows the official [OpenAI API quickstart](https://plat
 - Deterministic ecommerce dataset with several planted business anomalies
 - FastAPI backend and Streamlit operations interface
 - Execution trace with per-node latency, end-to-end timing, generated SQL, raw evidence, reviewer confidence, and charts
+- Per-model-call input/output token accounting and optional provider-cost estimates
 - PostgreSQL-backed run history with report replay, failure records, and parent-child analysis lineage
 - Evidence-aware follow-up analysis using bounded prior report, SQL, and result-row context
 - Markdown report and CSV evidence export
-- Starter evaluation set with completion, review, keyword recall, end-to-end latency, and per-node latency metrics
+- 15-case evaluation set with completion, review, keyword recall, end-to-end latency, and per-node latency metrics
 - Golden-result evaluation backed by deterministic read-only oracle queries
+- Resumable evaluation progress and a history-replay demo mode for provider outages
 
 ## Quick start
 
@@ -116,21 +118,21 @@ Run unit tests in the API image:
 docker compose run --rm api pytest -q
 ```
 
-Run the starter end-to-end evaluation after the stack is healthy:
+Run or resume the end-to-end evaluation after the stack is healthy:
 
 ```powershell
 docker compose exec api python scripts/run_evals.py
 ```
 
-Evaluation output is written to `artifacts/eval-results.json`, including per-case node timings, aggregate mean node latency, and golden-result recall computed from deterministic read-only oracle queries.
+The runner reuses matching successful runs from PostgreSQL, writes progress after every case, and stops cleanly on provider rate limits. A fully completed run is written to `artifacts/eval-results.json`, including per-case node timings, aggregate mean node latency, token usage, and golden-result recall computed from deterministic read-only oracle queries.
 
-### Latest local baseline
+### Latest verified local baseline
 
 Measured on 2026-11-09 with `gpt-5.6-sol` through an OpenAI-compatible CC Switch route:
 
 | Metric | Result |
 | --- | ---: |
-| Evaluation cases | 5 |
+| Completed cases | 5 of the 15-case suite |
 | HTTP success rate | 100% |
 | Reviewer approval rate | 100% |
 | Golden-result score | 100% |
@@ -140,7 +142,7 @@ Measured on 2026-11-09 with `gpt-5.6-sol` through an OpenAI-compatible CC Switch
 | Median end-to-end latency | 70.30 s |
 | Maximum end-to-end latency | 77.09 s |
 
-All five cases completed successfully; four used one SQL attempt and the highest/lowest channel case used the bounded reviewer repair loop once. Treat this as a small deterministic demo baseline, not a production-quality accuracy claim; the raw per-case evidence is stored in `artifacts/eval-results.json`.
+All five recorded cases completed successfully; four used one SQL attempt and the highest/lowest channel case used the bounded reviewer repair loop once. The full 15-case suite and every Oracle SQL are implemented and validated locally; the remaining live-model cases must be run when the configured provider is not rate-limiting requests. Treat the recorded five-case result as a deterministic demo baseline, not a production-quality accuracy claim; raw evidence is stored in `artifacts/eval-results.json`.
 
 ## Project structure
 

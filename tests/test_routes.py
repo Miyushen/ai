@@ -36,6 +36,7 @@ def test_follow_up_analysis_passes_parent_context_and_persists_result() -> None:
 
     assert response.parent_request_id == "parent-id"
     assert response.report == "follow-up report"
+    assert response.model_usage.model_calls == 0
     assert run_agent.call_args.args[2] == context
     assert create_run.call_args.kwargs["parent_request_id"] == "parent-id"
     complete_run.assert_called_once()
@@ -67,4 +68,22 @@ def test_provider_failure_marks_run_as_failed() -> None:
             asyncio.run(analyze(AnalyzeRequest(question="分析最近渠道收入")))
 
     assert error.value.status_code == 502
+    fail_run.assert_called_once()
+
+
+def test_provider_rate_limit_returns_429_and_marks_run_as_failed() -> None:
+    settings = SimpleNamespace(has_openai_key=True, openai_model="test-model")
+    rate_limit_error = RuntimeError("rate limited")
+    rate_limit_error.status_code = 429
+    with (
+        patch("app.api.routes.get_settings", return_value=settings),
+        patch("app.api.routes.create_analysis_run"),
+        patch("app.api.routes.fail_analysis_run") as fail_run,
+        patch("app.api.routes.run_agent", side_effect=rate_limit_error),
+    ):
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(analyze(AnalyzeRequest(question="分析最近渠道收入")))
+
+    assert error.value.status_code == 429
+    assert "rate limit" in error.value.detail.lower()
     fail_run.assert_called_once()

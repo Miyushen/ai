@@ -124,5 +124,6 @@ def run_agent(
         "question": question,
         "previous_analysis": previous_analysis or {},
         "trace": [],
+        "model_usage_events": [],
     }
     return get_graph().invoke(initial)

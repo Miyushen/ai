@@ -9,6 +9,14 @@ class TraceEvent(TypedDict):
     duration_ms: float
 
 
+class ModelUsageEvent(TypedDict):
+    node: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    usage_available: bool
+
+
 class AgentState(TypedDict, total=False):
     request_id: str
     question: str
@@ -26,4 +34,5 @@ class AgentState(TypedDict, total=False):
     report: str
     error: str | None
     trace: Annotated[list[TraceEvent], operator.add]
+    model_usage_events: Annotated[list[ModelUsageEvent], operator.add]
 

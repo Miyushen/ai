@@ -52,6 +52,116 @@
       "entity_column": "reason",
       "numeric_columns": ["refund_amount"]
     }
+  },
+  {
+    "id": "category_revenue_60d",
+    "question": "比较最近60天各产品品类的收入，并指出最高和最低的品类。",
+    "expected_terms": ["品类", "收入"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders) SELECT p.category, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS revenue FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '59 days' AND a.max_date GROUP BY p.category ORDER BY revenue DESC",
+      "row_indices": [0, -1],
+      "entity_column": "category",
+      "numeric_columns": ["revenue"]
+    }
+  },
+  {
+    "id": "traffic_channel_30d",
+    "question": "最近30天访问量最高和最低的渠道分别是什么？请给出访问量。",
+    "expected_terms": ["访问", "渠道"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(event_date) AS max_date FROM daily_traffic) SELECT channel, SUM(visits) AS visits FROM daily_traffic d CROSS JOIN anchor a WHERE d.event_date BETWEEN a.max_date - INTERVAL '29 days' AND a.max_date GROUP BY channel ORDER BY visits DESC",
+      "row_indices": [0, -1],
+      "entity_column": "channel",
+      "numeric_columns": ["visits"]
+    }
+  },
+  {
+    "id": "marketplace_spend_change",
+    "question": "Marketplace 最近30天广告花费与之前30天相比变化了多少？",
+    "expected_terms": ["Marketplace", "广告"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(event_date) AS max_date FROM daily_traffic), periods AS (SELECT 'recent_30_days' AS period_name, max_date - INTERVAL '29 days' AS start_date, max_date AS end_date FROM anchor UNION ALL SELECT 'previous_30_days', max_date - INTERVAL '59 days', max_date - INTERVAL '30 days' FROM anchor) SELECT p.period_name, ROUND(SUM(d.ad_spend), 2) AS ad_spend FROM periods p JOIN daily_traffic d ON d.event_date BETWEEN p.start_date AND p.end_date AND d.channel = 'Marketplace' GROUP BY p.period_name, p.start_date ORDER BY p.start_date DESC",
+      "row_indices": [0, 1],
+      "entity_column": "period_name",
+      "numeric_columns": ["ad_spend"]
+    }
+  },
+  {
+    "id": "top_products_quantity_90d",
+    "question": "最近90天销量最高的三个商品是什么？请给出销售件数。",
+    "expected_terms": ["商品", "销量"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders) SELECT p.name AS product_name, SUM(oi.quantity) AS units_sold FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '89 days' AND a.max_date GROUP BY p.id, p.name ORDER BY units_sold DESC, product_name LIMIT 3",
+      "row_indices": [0, 1, 2],
+      "entity_column": "product_name",
+      "numeric_columns": ["units_sold"]
+    }
+  },
+  {
+    "id": "cancellation_rate_channel_90d",
+    "question": "最近90天哪个渠道的订单取消率最高？",
+    "expected_terms": ["取消率", "渠道"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders) SELECT o.channel, COUNT(*) FILTER (WHERE o.status = 'cancelled') AS cancelled_orders, COUNT(*) AS total_orders, ROUND(COUNT(*) FILTER (WHERE o.status = 'cancelled')::numeric / NULLIF(COUNT(*), 0), 4) AS cancellation_rate FROM orders o CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '89 days' AND a.max_date GROUP BY o.channel ORDER BY cancellation_rate DESC, channel LIMIT 1",
+      "row_indices": [0],
+      "entity_column": "channel",
+      "numeric_columns": []
+    }
+  },
+  {
+    "id": "refund_amount_category_90d",
+    "question": "最近90天哪个产品品类的退款金额最高？请给出金额。",
+    "expected_terms": ["退款金额", "品类"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(refund_date) AS max_date FROM refunds) SELECT p.category, ROUND(SUM(r.amount), 2) AS refund_amount FROM refunds r JOIN order_items oi ON oi.id = r.order_item_id JOIN products p ON p.id = oi.product_id CROSS JOIN anchor a WHERE r.refund_date BETWEEN a.max_date - INTERVAL '89 days' AND a.max_date GROUP BY p.category ORDER BY refund_amount DESC LIMIT 1",
+      "row_indices": [0],
+      "entity_column": "category",
+      "numeric_columns": ["refund_amount"]
+    }
+  },
+  {
+    "id": "average_order_value_channel_90d",
+    "question": "最近90天各渠道平均客单价是多少？指出最高和最低渠道。",
+    "expected_terms": ["客单价", "渠道"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders) SELECT o.channel, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) / NULLIF(COUNT(DISTINCT o.id), 0), 2) AS average_order_value FROM orders o JOIN order_items oi ON oi.order_id = o.id CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '89 days' AND a.max_date GROUP BY o.channel ORDER BY average_order_value DESC",
+      "row_indices": [0, -1],
+      "entity_column": "channel",
+      "numeric_columns": ["average_order_value"]
+    }
+  },
+  {
+    "id": "average_discount_category_90d",
+    "question": "最近90天哪个产品品类的平均折扣最高？",
+    "expected_terms": ["平均折扣", "品类"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders) SELECT p.category, ROUND(AVG(oi.discount), 4) AS average_discount FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '89 days' AND a.max_date GROUP BY p.category ORDER BY average_discount DESC, category LIMIT 1",
+      "row_indices": [0],
+      "entity_column": "category",
+      "numeric_columns": []
+    }
+  },
+  {
+    "id": "gross_profit_category_90d",
+    "question": "最近90天按产品品类比较毛利润，并指出最高和最低的品类。",
+    "expected_terms": ["毛利润", "品类"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders) SELECT p.category, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount) - oi.quantity * p.unit_cost - COALESCE(r.amount, 0)), 2) AS gross_profit FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id LEFT JOIN refunds r ON r.order_item_id = oi.id CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '89 days' AND a.max_date GROUP BY p.category ORDER BY gross_profit DESC",
+      "row_indices": [0, -1],
+      "entity_column": "category",
+      "numeric_columns": ["gross_profit"]
+    }
+  },
+  {
+    "id": "region_order_count_30d",
+    "question": "最近30天订单量最多和最少的地区分别是什么？请给出订单数。",
+    "expected_terms": ["订单", "地区"],
+    "oracle": {
+      "sql": "WITH anchor AS (SELECT MAX(order_date) AS max_date FROM orders) SELECT c.region, COUNT(DISTINCT o.id) AS order_count FROM orders o JOIN customers c ON c.id = o.customer_id CROSS JOIN anchor a WHERE o.order_date BETWEEN a.max_date - INTERVAL '29 days' AND a.max_date GROUP BY c.region ORDER BY order_count DESC",
+      "row_indices": [0, -1],
+      "entity_column": "region",
+      "numeric_columns": ["order_count"]
+    }
   }
 ]
 

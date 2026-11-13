@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from sqlalchemy import select
 
 PROJECT_ROOT = Path(__file__).parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -15,9 +16,22 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.services.sql_executor import execute_read_only
 from app.services.sql_guard import validate_and_rewrite_sql
+from app.db.base import SessionLocal
+from app.db.models import AnalysisRun
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
 QUESTIONS_PATH = PROJECT_ROOT / "evals" / "questions.json"
+
+
+def latest_completed_result(question: str) -> dict[str, Any] | None:
+    with SessionLocal() as session:
+        run = session.scalar(
+            select(AnalysisRun)
+            .where(AnalysisRun.question == question, AnalysisRun.status == "completed")
+            .order_by(AnalysisRun.created_at.desc())
+            .limit(1)
+        )
+        return run.result if run and run.result else None
 
 
 def collect_node_durations(trace: list[dict]) -> dict[str, float]:
@@ -120,26 +134,45 @@ def run_oracle(case: dict[str, Any]) -> list[dict[str, Any]]:
 
 def main() -> None:
     questions = json.loads(QUESTIONS_PATH.read_text(encoding="utf-8"))
+    selected_ids = {
+        case_id.strip()
+        for case_id in os.getenv("EVAL_CASE_IDS", "").split(",")
+        if case_id.strip()
+    }
+    if selected_ids:
+        questions = [case for case in questions if case["id"] in selected_ids]
+    reuse_history = os.getenv("EVAL_REUSE_HISTORY", "true").lower() in {"1", "true", "yes"}
+    fail_fast_rate_limit = os.getenv("EVAL_FAIL_FAST_RATE_LIMIT", "true").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     results = []
     for case in questions:
         started = time.perf_counter()
-        try:
-            response = requests.post(
-                f"{API_BASE_URL}/api/v1/analyze",
-                json={"question": case["question"]},
-                timeout=300,
-            )
-            status_code = response.status_code
-            payload = (
-                response.json()
-                if response.headers.get("content-type", "").startswith("application/json")
-                else {}
-            )
+        payload = latest_completed_result(case["question"]) if reuse_history else None
+        source = "history" if payload else "live"
+        if payload:
+            status_code = 200
             request_error = None
-        except requests.RequestException as exc:
-            status_code = 0
-            payload = {}
-            request_error = type(exc).__name__
+        else:
+            try:
+                response = requests.post(
+                    f"{API_BASE_URL}/api/v1/analyze",
+                    json={"question": case["question"]},
+                    timeout=300,
+                )
+                status_code = response.status_code
+                payload = (
+                    response.json()
+                    if response.headers.get("content-type", "").startswith("application/json")
+                    else {}
+                )
+                request_error = None if response.ok else payload.get("detail", response.reason)
+            except requests.RequestException as exc:
+                status_code = 0
+                payload = {}
+                request_error = type(exc).__name__
         latency = time.perf_counter() - started
         report = payload.get("report", "")
         terms_found = [term for term in case["expected_terms"] if term.lower() in report.lower()]
@@ -147,6 +180,7 @@ def main() -> None:
         results.append(
             {
                 "id": case["id"],
+                "source": source,
                 "status_code": status_code,
                 "latency_seconds": round(latency, 2),
                 "review_approved": payload.get("review", {}).get("approved", False),
@@ -154,11 +188,25 @@ def main() -> None:
                 "attempts": payload.get("attempts"),
                 "agent_duration_seconds": round(payload.get("total_duration_ms", 0) / 1000, 2),
                 "node_duration_ms": collect_node_durations(payload.get("trace", [])),
+                "model_usage": payload.get("model_usage", {}),
                 **golden,
                 "error": request_error,
             }
         )
         print(json.dumps(results[-1], ensure_ascii=False))
+        progress_path = PROJECT_ROOT / "artifacts" / "eval-progress.json"
+        progress_path.parent.mkdir(exist_ok=True)
+        progress_path.write_text(
+            json.dumps(
+                {"completed_cases": len(results), "results": results},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        if status_code == 429 and fail_fast_rate_limit:
+            print("Stopped after provider rate limit; completed runs remain available for resume.")
+            break
 
     output_dir = PROJECT_ROOT / "artifacts"
     output_dir.mkdir(exist_ok=True)
@@ -190,18 +238,33 @@ def main() -> None:
         ),
         "median_latency_seconds": round(statistics.median(latencies), 2),
         "max_latency_seconds": round(max(latencies), 2),
+        "total_model_calls": sum(
+            int(result["model_usage"].get("model_calls", 0) or 0) for result in results
+        ),
+        "total_tokens": sum(
+            int(result["model_usage"].get("total_tokens", 0) or 0) for result in results
+        ),
+        "token_usage_case_coverage": sum(
+            bool(result["model_usage"].get("usage_available", False)) for result in results
+        )
+        / len(results),
         "mean_node_duration_ms": {
             node: round(statistics.fmean(samples), 2)
             for node, samples in sorted(node_samples.items())
         },
     }
-    output_path = output_dir / "eval-results.json"
+    complete = len(results) == len(questions) and all(
+        result["status_code"] == 200 for result in results
+    )
+    output_path = output_dir / ("eval-results.json" if complete else "eval-partial-results.json")
     output_path.write_text(
         json.dumps({"summary": summary, "results": results}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     print(json.dumps({"summary": summary}, ensure_ascii=False))
     print(f"Wrote {output_path}")
+    if not complete:
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
